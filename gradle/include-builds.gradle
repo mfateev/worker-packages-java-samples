@@ -1,0 +1,25 @@
+def samplesRoot = settingsDir.name in ['greeting-v1', 'greeting-v2', 'worker'] ? settingsDir.parentFile : settingsDir
+def libraryPath = providers.gradleProperty('workerPackagesDir')
+    .orElse(providers.environmentVariable('WORKER_PACKAGES_DIR'))
+    .getOrElse(new File(samplesRoot.parentFile, 'worker-packages-java').absolutePath)
+def library = file(libraryPath).canonicalFile
+def sdkPath = providers.gradleProperty('sdkDir')
+    .orElse(providers.environmentVariable('TEMPORAL_SDK_DIR'))
+    .getOrElse(new File(samplesRoot.parentFile, 'sdk-java').absolutePath)
+def sdk = file(sdkPath).canonicalFile
+if (!new File(library, 'settings.gradle').isFile()) {
+    throw new GradleException('Worker Packages checkout missing; set workerPackagesDir or WORKER_PACKAGES_DIR')
+}
+if (!new File(sdk, 'settings.gradle').isFile()) {
+    throw new GradleException('sdk-java main checkout missing; set sdkDir or TEMPORAL_SDK_DIR')
+}
+// Forward one absolute SDK path so the samples and included library share a single source build.
+gradle.startParameter.projectProperties = gradle.startParameter.projectProperties + [sdkDir: sdk.absolutePath]
+includeBuild(library) { name = 'temporal-worker-packages' }
+includeBuild(sdk) {
+    dependencySubstitution {
+        ['temporal-sdk', 'temporal-serviceclient', 'temporal-testing', 'temporal-test-server', 'temporal-envconfig'].each { artifact ->
+            substitute module("io.temporal:${artifact}") using project(":${artifact}")
+        }
+    }
+}

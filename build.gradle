@@ -1,0 +1,83 @@
+plugins {
+    id 'java'
+    id 'com.diffplug.spotless'
+    id 'net.ltgt.errorprone'
+}
+group = 'example.samples'
+version = '0.1.0-SNAPSHOT'
+allprojects { apply from: rootProject.file('gradle/java.gradle') }
+dependencies {
+    testImplementation project(':worker')
+    testImplementation "io.temporal:temporal-worker-packages:$workerPackagesVersion"
+    testImplementation "io.temporal:temporal-testing:$temporalVersion"
+    testImplementation "io.temporal:temporal-test-server:$temporalVersion"
+    testImplementation "junit:junit:$junitVersion"
+    testRuntimeOnly "org.slf4j:slf4j-simple:$slf4jVersion"
+}
+def greetingProjects = [project(':greeting-v1'), project(':greeting-v2')]
+tasks.register('packageExamples', Sync) {
+    into layout.buildDirectory.dir('examples')
+    greetingProjects.each { sample ->
+        from(sample.provider { sample.tasks.named('workerPackage').get().archiveFile.get().asFile })
+        dependsOn "${sample.path}:workerPackage"
+    }
+}
+tasks.named('test', Test) {
+    dependsOn 'packageExamples'
+    inputs.files(tasks.named('packageExamples'))
+    systemProperty 'samples.rootDir', rootProject.projectDir.absolutePath
+    doFirst { systemProperty 'acceptance.classpath', sourceSets.test.runtimeClasspath.asPath }
+}
+tasks.register('demo', JavaExec) {
+    dependsOn 'testClasses', 'packageExamples'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'example.samples.RestartDemo'
+    workingDir rootProject.projectDir
+    systemProperty 'samples.rootDir', rootProject.projectDir.absolutePath
+    doFirst { systemProperty 'acceptance.classpath', sourceSets.test.runtimeClasspath.asPath }
+    if (project.hasProperty('testJavaVersion')) {
+        javaLauncher = javaToolchains.launcherFor {
+            languageVersion = JavaLanguageVersion.of(project.property('testJavaVersion') as int)
+        }
+    }
+}
+tasks.register('installCli') {
+    dependsOn gradle.includedBuild('temporal-worker-packages').task(':installDist')
+}
+tasks.register('format') { dependsOn allprojects.collect { it.tasks.named('spotlessApply') } }
+tasks.register('formatCheck') { dependsOn allprojects.collect { it.tasks.named('spotlessCheck') } }
+tasks.named('check') { dependsOn 'formatCheck', 'verifyJava8Compatibility' }
+tasks.named('assemble') { dependsOn 'packageExamples'; dependsOn subprojects.collect { it.tasks.named('assemble') } }
+tasks.named('build') { dependsOn subprojects.collect { it.tasks.named('build') } }
+tasks.register('verifyJava8Compatibility') {
+    dependsOn ':worker:installDist', 'packageExamples'
+    doLast {
+        def verifyJar = { InputStream input, String artifact ->
+            new java.util.jar.JarInputStream(input).withCloseable { jar ->
+                java.util.jar.JarEntry entry
+                while ((entry = jar.nextJarEntry) != null) {
+                    if (entry.name.endsWith('.class') && !entry.name.startsWith('META-INF/versions/') && entry.name != 'module-info.class') {
+                        def data = new DataInputStream(jar)
+                        if (data.readInt() != (int) 0xCAFEBABE) throw new GradleException("Invalid class: ${artifact}!${entry.name}")
+                        data.readUnsignedShort()
+                        def major = data.readUnsignedShort()
+                        if (major > 52) throw new GradleException("Java 8 incompatible class version ${major}: ${artifact}!${entry.name}")
+                    }
+                }
+            }
+        }
+        def jars = fileTree('worker/build/install/worker/lib') { include '*.jar' }.files
+        jars.each { artifact -> artifact.withInputStream { verifyJar(it, artifact.name) } }
+        def packages = fileTree('build/examples') { include '*.twp' }.files
+        packages.each { artifact ->
+            new java.util.zip.ZipFile(artifact).withCloseable { zip ->
+                zip.entries().each { entry ->
+                    if (entry.name.endsWith('.jar')) {
+                        zip.getInputStream(entry).withCloseable { verifyJar(it, "${artifact.name}!${entry.name}") }
+                    }
+                }
+            }
+        }
+        println "Verified Java 8 base classes in ${jars.size()} worker distribution JARs and ${packages.size()} sample packages (multi-release alternatives excluded)"
+    }
+}

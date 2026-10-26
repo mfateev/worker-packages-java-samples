@@ -1,0 +1,14 @@
+plugins {
+    id 'io.temporal.worker-packages'
+    id 'com.diffplug.spotless'
+    id 'net.ltgt.errorprone'
+}
+apply from: '../gradle/java.gradle'
+group = 'example.greeting'
+version = '2'
+dependencies { compileOnly "io.temporal:temporal-sdk:$temporalVersion" }
+workerPackage {
+    packageId = 'greetings'
+    workflows = ['GreetingWorkflow': 'example.greeting.GreetingWorkflowImpl']
+    activities = ['GetName': 'example.greeting.GreetingActivitiesImpl', 'Greet': 'example.greeting.GreetingActivitiesImpl']
+}

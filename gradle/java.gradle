@@ -1,0 +1,56 @@
+if (project.extensions.extraProperties.has('sampleJavaConfigured')) return
+project.extensions.extraProperties.set('sampleJavaConfigured', true)
+apply plugin: 'java-library'
+apply plugin: 'com.diffplug.spotless'
+apply plugin: 'net.ltgt.errorprone'
+def samplesRoot = file('gradle.properties').isFile() ? projectDir : projectDir.parentFile
+def dependencyVersions = new Properties()
+new File(samplesRoot, 'gradle.properties').withInputStream { dependencyVersions.load(it) }
+['temporalVersion', 'workerPackagesVersion', 'junitVersion', 'slf4jVersion'].each { name ->
+    if (!project.hasProperty(name)) project.extensions.extraProperties.set(name, dependencyVersions.getProperty(name))
+}
+repositories { mavenCentral() }
+dependencyLocking { lockAllConfigurations() }
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+dependencies {
+    errorproneJavac 'com.google.errorprone:javac:9+181-r4173-1'
+    errorprone 'com.google.errorprone:error_prone_core:2.31.0'
+}
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 8
+    options.compilerArgs += ['-Xlint:none', '-Xlint:deprecation', '-Werror', '-parameters']
+    options.errorprone.enabled = true
+    options.errorprone.disableWarningsInGeneratedCode = true
+    options.errorprone.excludedPaths = '.*/build/generated/.*'
+}
+tasks.withType(Jar).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    manifest.attributes('Implementation-Title': project.name,
+        'Implementation-Version': project.version,
+        'Implementation-Vendor': 'Temporal Technologies Inc.')
+}
+spotless {
+    java {
+        target 'src/*/java/**/*.java'
+        googleJavaFormat('1.24.0')
+    }
+}
+tasks.named('classes') { dependsOn 'spotlessApply' }
+tasks.named('check') { dependsOn 'spotlessCheck' }
+tasks.withType(Test).configureEach {
+    useJUnit()
+    if (project.hasProperty('testJavaVersion')) {
+        javaLauncher = javaToolchains.launcherFor {
+            languageVersion = JavaLanguageVersion.of(project.property('testJavaVersion') as int)
+        }
+    }
+    forkEvery = 1
+    maxParallelForks = 1
+    testLogging { events 'passed', 'skipped', 'failed'; exceptionFormat 'full' }
+}

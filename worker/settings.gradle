@@ -1,0 +1,12 @@
+pluginManagement {
+    def libraryPath = providers.gradleProperty('workerPackagesDir')
+        .orElse(providers.environmentVariable('WORKER_PACKAGES_DIR'))
+        .getOrElse('../../worker-packages-java')
+    includeBuild(new File(file(libraryPath).canonicalFile, 'build-logic')) { name = 'build-logic' }
+    plugins {
+        id 'com.diffplug.spotless' version '7.0.2'
+        id 'net.ltgt.errorprone' version '4.1.0'
+    }
+}
+rootProject.name = 'worker'
+apply from: '../gradle/include-builds.gradle'

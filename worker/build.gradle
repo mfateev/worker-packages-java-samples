@@ -1,0 +1,14 @@
+plugins {
+    id 'application'
+    id 'com.diffplug.spotless'
+    id 'net.ltgt.errorprone'
+}
+apply from: '../gradle/java.gradle'
+group = 'example.worker'
+version = '0.1.0-SNAPSHOT'
+application { mainClass = 'example.worker.PackageWorker' }
+dependencies {
+    implementation "io.temporal:temporal-worker-packages:$workerPackagesVersion"
+    implementation "io.temporal:temporal-envconfig:$temporalVersion"
+    runtimeOnly "org.slf4j:slf4j-simple:$slf4jVersion"
+}
