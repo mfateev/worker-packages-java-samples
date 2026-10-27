@@ -3,6 +3,7 @@ package example.samples;
 import static example.samples.IntegrationSupport.*;
 import static org.junit.Assert.*;
 
+import example.worker.DoGreetingStarter;
 import example.worker.PackageWorker;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowStub;
@@ -26,6 +27,8 @@ public class PackageWorkerExampleTest {
   @Test
   public void standaloneWorkerLoadsItsDirectoryArgumentAndShutsDownCleanly() throws Exception {
     assertThrows(IllegalArgumentException.class, () -> PackageWorker.main(new String[0]));
+    assertThrows(
+        IllegalArgumentException.class, () -> DoGreetingStarter.main(new String[] {"1", "2"}));
     Path temp = temporaryFolder.getRoot().toPath();
     Path packages = Files.createDirectory(temp.resolve("packages with spaces"));
     ExamplePackages.copy(packages, 1);
@@ -70,17 +73,44 @@ public class PackageWorkerExampleTest {
                 throw new java.io.UncheckedIOException(e);
               }
             });
-        WorkflowClient client = client(service, "greetings");
+        WorkflowClient client = client(service);
         WorkflowStub run =
             workflow(client, queue, "example-" + UUID.randomUUID(), "GreetingWorkflow");
         run.start();
         awaitGreetingWaiting(client, run, 2);
         run.signal("proceed");
         assertEquals("Hi, multi-versioned worker!", result(client, run, 20, String.class));
+        for (boolean override : new boolean[] {false, true}) {
+          Path starterLog = temp.resolve(override ? "starter-v1.log" : "starter-default.log");
+          java.util.List<String> command =
+              new java.util.ArrayList<>(
+                  java.util.Arrays.asList(
+                      Paths.get(System.getProperty("java.home"), "bin", "java").toString(),
+                      "-cp",
+                      System.getProperty("acceptance.classpath"),
+                      DoGreetingStarter.class.getName()));
+          if (override) command.add("1");
+          ProcessBuilder starterBuilder = new ProcessBuilder(command);
+          starterBuilder.environment().putAll(builder.environment());
+          Process starter =
+              starterBuilder.redirectErrorStream(true).redirectOutput(starterLog.toFile()).start();
+          try {
+            assertTrue("Greeting starter timed out", starter.waitFor(25, TimeUnit.SECONDS));
+            assertEquals(TestSupport.readString(starterLog), 0, starter.exitValue());
+            assertTrue(
+                TestSupport.readString(starterLog)
+                    .contains(override ? "Hello, World!" : "Hi, multi-versioned worker!"));
+          } finally {
+            if (starter.isAlive()) {
+              starter.destroyForcibly();
+              starter.waitFor(5, TimeUnit.SECONDS);
+            }
+          }
+        }
         String diagnostics = TestSupport.readString(log);
-        assertTrue(diagnostics.contains("versionSelector=configured"));
+        assertTrue(diagnostics.contains("versionSelector=currentVersion"));
         assertTrue(diagnostics.contains("version=1 package=greetings"));
-        assertTrue(diagnostics.contains("version=2 package=greetings"));
+        assertTrue(diagnostics.contains("version=2 (current) package=greetings"));
         assertTrue(diagnostics.contains("workflows=[GreetingWorkflow]"));
         assertTrue(diagnostics.contains("activities=[Greet]"));
         assertTrue(diagnostics.contains("activities=[GetName, Greet]"));

@@ -41,7 +41,7 @@ public class GreetingExampleTest {
     String queue = "greeting-example-" + UUID.randomUUID();
     try (io.temporal.testing.TestWorkflowEnvironment env = TestServices.environment()) {
       env.start();
-      io.temporal.client.WorkflowClient client = client(env.getWorkflowServiceStubs(), "greetings");
+      io.temporal.client.WorkflowClient client = client(env.getWorkflowServiceStubs());
       io.temporal.client.WorkflowStub a =
           workflow(client, queue, "greeting-A-" + UUID.randomUUID(), "GreetingWorkflow");
       try (IntegrationSupport.Host first = host(client, packages, temp.resolve("cache-a"), queue)) {
@@ -94,7 +94,7 @@ public class GreetingExampleTest {
         history.getEvents().get(0).getWorkflowExecutionStartedEventAttributes();
     assertEquals("GreetingWorkflow", started.getWorkflowType().getName());
     assertEquals(0, started.getInput().getPayloadsCount());
-    assertEquals("greetings", PackageHeaders.workflowPackageId(new Header(started.getHeader())));
+    assertFalse(started.getHeader().containsFields(PackageHeaders.KEY));
     List<HistoryEvent> scheduled =
         history.getEvents().stream()
             .filter(event -> event.getEventType() == EventType.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED)
@@ -146,7 +146,8 @@ public class GreetingExampleTest {
         String[] pin =
             DefaultDataConverter.STANDARD_INSTANCE.fromPayloads(
                 0, Optional.of(marker.getDetailsOrThrow("data")), String[].class, String[].class);
-        assertArrayEquals(new String[] {expected.packageVersion(), expected.sha256()}, pin);
+        assertArrayEquals(
+            new String[] {expected.packageVersion(), expected.sha256(), expected.packageId()}, pin);
       }
     }
     assertTrue(

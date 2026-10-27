@@ -65,7 +65,7 @@ workerPackage {
 }
 ```
 
-Version 2 sets `version = '2'` and adds `GetName` to its activities map. The package version defaults to the project's version as a string; Git SHAs and semantic versions are supported. Set `workerPackage.packageVersion` explicitly to override it. Versions have no implicit deployment ordering and must be unique across the deployed package directory.
+Version 2 sets `version = '2'` and adds `GetName` to its activities map. The package version defaults to the project's version as a string; Git SHAs and semantic versions are supported. Set `workerPackage.packageVersion` explicitly to override it. Versions have no implicit deployment ordering. Archives may share a version when their workflow/activity types do not overlap.
 
 For a package version based on the application's Git commit:
 
@@ -89,7 +89,7 @@ For a replay-compatible patch, set `workerPackage.patchesVersion` to the target 
 
 ## Worker implementation
 
-[worker/PackageWorker.java](worker/src/main/java/example/worker/PackageWorker.java) opens `WorkerPackagePlugin`, installs it through `WorkerFactoryOptions.setPlugins`, creates a worker and starts polling. Its single command-line argument is the package directory.
+[worker/PackageWorker.java](worker/src/main/java/example/worker/PackageWorker.java) builds `WorkerPackagePlugin` with `setPackagesDirectory` and `setCacheDirectory`, installs it through `WorkerFactoryOptions.setPlugins`, creates a worker and starts polling. Its single command-line argument is the package directory.
 
 ```bash
 ./gradlew packageExamples :worker:installDist
@@ -103,9 +103,36 @@ TEMPORAL_ADDRESS=127.0.0.1:7233 TEMPORAL_NAMESPACE=default \
   TEMPORAL_PACKAGE_VERSION=2 worker/build/install/worker/bin/worker build/examples
 ```
 
-`TEMPORAL_PACKAGE_VERSION` installs a fixed version-selector callback; use `2` when both packages are installed. Without a selector, selection succeeds only with one installed version. The task queue defaults to `workflow-packages` and the cache to `.package-cache`; override them with `TEMPORAL_TASK_QUEUE` and `TEMPORAL_PACKAGE_CACHE_DIR`.
+`TEMPORAL_PACKAGE_VERSION` configures the worker’s current version; use `2` when both packages are installed. Without a selector, selection succeeds only with one installed version. The task queue defaults to `workflow-packages` and the cache to `.package-cache`; override them with `TEMPORAL_TASK_QUEUE` and `TEMPORAL_PACKAGE_CACHE_DIR`.
 
 Startup prints the selector policy and exported types for each version. The sample leaves the worker polling and can be stopped with Ctrl-C. When an embedding host calls `factory.shutdown()`, the plugin closes package loaders after actual termination. Copy the worker distribution's entire `bin/` and `lib/` directories plus the archives to deploy elsewhere.
+
+## Start a greeting from Java
+
+[DoGreetingStarter.java](worker/src/main/java/example/worker/DoGreetingStarter.java) uses the same `ClientConfigProfile` connection setup as the worker. With a version argument, it configures `WorkerPackagePlugin.newBuilder().setClientVersion(args[0]).build()` through `WorkflowClientOptions.setPlugins`, starts `GreetingWorkflow`, sends `proceed`, and prints the result. The requested version overrides the worker’s current version. With no arguments, it uses a plain SDK client with no package plugin and no version header; the worker assigns its current version. The client needs no package files or package ID.
+
+With the Temporal service running, start a worker with both archives and V2 as its current version:
+
+```bash
+./gradlew packageExamples :worker:installDist
+TEMPORAL_PACKAGE_VERSION=2 worker/build/install/worker/bin/worker build/examples
+```
+
+In another terminal, run the starter with the worker’s current version or request V2 explicitly:
+
+```bash
+./gradlew :worker:greetingStarter
+./gradlew :worker:greetingStarter --args="2"
+```
+
+Or run directly with Java 8 or later, using the installed worker distribution:
+
+```bash
+java -cp 'worker/build/install/worker/lib/*' example.worker.DoGreetingStarter
+java -cp 'worker/build/install/worker/lib/*' example.worker.DoGreetingStarter 2
+```
+
+Version `2` prints `Hi, multi-versioned worker!`, regardless of the worker’s current version. Set `TEMPORAL_TASK_QUEUE` and the standard Temporal connection variables on both processes when using a different queue or service. Pass `1` to run V1 and print `Hello, World!`. Each invocation creates a new workflow ID.
 
 ## Run the library CLI directly
 
@@ -133,7 +160,7 @@ In a third terminal, start and release a workflow:
 
 ```bash
 ../worker-packages-java/build/install/temporal-worker-packages/bin/temporal-worker-packages start \
-  --package-id greetings --type GreetingWorkflow --workflow-id greeting-direct-1 --input '[]' \
+  --type GreetingWorkflow --workflow-id greeting-direct-1 --input '[]' \
   --endpoint 127.0.0.1:7233 --namespace default --task-queue workflow-packages
 ../worker-packages-java/build/install/temporal-worker-packages/bin/temporal-worker-packages signal \
   --workflow-id greeting-direct-1 --name proceed --endpoint 127.0.0.1:7233 --namespace default
@@ -153,3 +180,5 @@ The result is `"Hi, multi-versioned worker!"`. Use a new workflow ID for another
 ```
 
 The two integration tests under `src/test/java/example/samples` cover greeting version isolation/replay and the actual worker process with profile configuration. The demo replaces worker JVMs against a persistent test-service process. The CLI smoke check uses the library's installed launcher and writes logs under this repository's `build/verification/cli-smoke/`; it also exercises patch-only chain deployment. Set `JAVA_HOME` to Java 8 to run that script against Java 8. Library unit, runtime, stress-fixture and Gradle plugin tests remain in the separate library repository.
+
+Clients need only the workflow type and task queue. Without a version header, the worker assigns `TEMPORAL_PACKAGE_VERSION`. To request a version explicitly, use the CLI start option `--package-version VERSION` or Java `WorkerPackagePlugin.newBuilder().setClientVersion("VERSION").build()`; clients need no package files or package ID.

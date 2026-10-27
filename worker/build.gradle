@@ -12,3 +12,10 @@ dependencies {
     implementation "io.temporal:temporal-envconfig:$temporalVersion"
     runtimeOnly "org.slf4j:slf4j-simple:$slf4jVersion"
 }
+
+tasks.register('greetingStarter', JavaExec) {
+    description = 'Starts the greeting workflow with an optional version argument.'
+    group = 'application'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'example.worker.DoGreetingStarter'
+}

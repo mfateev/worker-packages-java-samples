@@ -21,14 +21,14 @@ public class PackageWorker {
 
     String queue = System.getenv().getOrDefault("TEMPORAL_TASK_QUEUE", "workflow-packages");
     String version = System.getenv("TEMPORAL_PACKAGE_VERSION");
-    WorkerPackagePlugin.Options.Builder pluginOptions = WorkerPackagePlugin.Options.newBuilder();
-    if (version != null) pluginOptions.setVersionSelector(context -> version);
-    WorkerPackagePlugin plugin =
-        WorkerPackagePlugin.open(
-            Paths.get(args[0]),
-            Paths.get(System.getenv().getOrDefault("TEMPORAL_PACKAGE_CACHE_DIR", ".package-cache")),
-            queue,
-            pluginOptions.build());
+    WorkerPackagePlugin.Builder pluginBuilder =
+        WorkerPackagePlugin.newBuilder()
+            .setPackagesDirectory(Paths.get(args[0]))
+            .setCacheDirectory(
+                Paths.get(
+                    System.getenv().getOrDefault("TEMPORAL_PACKAGE_CACHE_DIR", ".package-cache")));
+    if (version != null) pluginBuilder.setCurrentVersion(version);
+    WorkerPackagePlugin plugin = pluginBuilder.build();
 
     WorkerFactory factory =
         WorkerFactory.newInstance(

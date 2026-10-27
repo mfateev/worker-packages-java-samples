@@ -31,9 +31,9 @@ public final class RestartDemo {
       WorkflowServiceStubs service =
           WorkflowServiceStubs.newServiceStubs(TestServices.options().setTarget(target).build());
       try {
-        io.temporal.client.WorkflowClient client = client(service, "greetings");
+        io.temporal.client.WorkflowClient client = client(service);
         WorkflowStub a = workflow(client, queue, "demo-A-" + UUID.randomUUID(), "GreetingWorkflow");
-        // ProcessHost's worker only hosts packages; this controller client supplies start headers.
+        // The controller uses an ordinary client; the worker assigns the current version.
         try (ProcessHost first =
             new ProcessHost(
                 target, packages, work.resolve("cache-a"), queue, work.resolve("worker-a.log"))) {

@@ -212,7 +212,7 @@ def main():
         ready(worker, f"Worker polling {queue}")
         phases.append("installed CLI test server and patch-only chain worker startup")
 
-        _, start_output = command("start", "start", "--package-id", "greetings", "--type", "GreetingWorkflow",
+        _, start_output = command("start", "start", "--type", "GreetingWorkflow",
                                   "--workflow-id", workflow_id, "--input",
                                   json.dumps([]), *common)
         execution = json.loads(start_output)
@@ -221,7 +221,7 @@ def main():
         target = ["--workflow-id", workflow_id, "--run-id", execution["runId"], *common]
         summary["workflow"] = execution
 
-        phases.append("header-routed zero-argument workflow start")
+        phases.append("header-free zero-argument workflow start using the worker current version")
 
         _, signalled = command("signal", "signal", "--name", "proceed", "--input",
                                json.dumps([]), *target)

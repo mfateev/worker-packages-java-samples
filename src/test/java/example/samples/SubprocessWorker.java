@@ -12,7 +12,7 @@ public final class SubprocessWorker {
         WorkflowServiceStubs.newServiceStubs(TestServices.options().setTarget(args[0]).build());
     try (IntegrationSupport.Host host =
         IntegrationSupport.host(
-            IntegrationSupport.client(service, "greetings"),
+            IntegrationSupport.client(service),
             java.nio.file.Paths.get(args[1]),
             java.nio.file.Paths.get(args[2]),
             args[3])) {

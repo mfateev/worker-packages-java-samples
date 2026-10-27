@@ -9,24 +9,20 @@ import io.temporal.serviceclient.WorkflowServiceStubs;
 import io.temporal.worker.Worker;
 import io.temporal.worker.WorkerFactory;
 import io.temporal.worker.WorkerFactoryOptions;
-import io.temporal.worker.packages.runtime.PackageClientInterceptor;
 import io.temporal.worker.packages.runtime.WorkerPackagePlugin;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 final class IntegrationSupport {
   private IntegrationSupport() {}
 
-  static WorkflowClient client(WorkflowServiceStubs service, String packageId) {
+  static WorkflowClient client(WorkflowServiceStubs service) {
     return WorkflowClient.newInstance(
-        service,
-        WorkflowClientOptions.newBuilder()
-            .setNamespace("default")
-            .setInterceptors(new PackageClientInterceptor(packageId))
-            .build());
+        service, WorkflowClientOptions.newBuilder().setNamespace("default").build());
   }
 
   static WorkflowStub workflow(WorkflowClient client, String queue, String id, String type) {
@@ -102,14 +98,13 @@ final class IntegrationSupport {
   }
 
   // Numeric sample labels are an explicit host policy, not library version semantics.
-  static WorkerPackagePlugin.Options numericExampleOptions() {
-    return WorkerPackagePlugin.Options.newBuilder()
-        .setVersionSelector(
+  static Consumer<WorkerPackagePlugin.Builder> numericExampleOptions() {
+    return builder ->
+        builder.setVersionSelector(
             context ->
                 context.getAvailableVersions().stream()
                     .max(java.util.Comparator.comparingInt(Integer::parseInt))
-                    .orElseThrow(() -> new IllegalStateException("No sample versions installed")))
-        .build();
+                    .orElseThrow(() -> new IllegalStateException("No sample versions installed")));
   }
 
   static Host host(
@@ -117,10 +112,13 @@ final class IntegrationSupport {
       Path packages,
       Path cache,
       String queue,
-      WorkerPackagePlugin.Options options,
+      Consumer<WorkerPackagePlugin.Builder> options,
       WorkerInterceptor... existing)
       throws Exception {
-    WorkerPackagePlugin plugin = WorkerPackagePlugin.open(packages, cache, queue, options);
+    WorkerPackagePlugin.Builder pluginBuilder =
+        WorkerPackagePlugin.newBuilder().setPackagesDirectory(packages).setCacheDirectory(cache);
+    options.accept(pluginBuilder);
+    WorkerPackagePlugin plugin = pluginBuilder.build();
     WorkerFactory factory = null;
     try {
       factory =
