@@ -48,6 +48,8 @@ Run the restart demo:
 
 It starts a local Temporal test service, installs v1 and starts workflow A, observes its committed history, adds v2 and replaces the worker JVM. It then starts B, signals both runs and verifies A returns `Hello, World!` while B returns `Hi, multi-versioned worker!`. Histories and subprocess logs are saved under `build/restart-demo-*`. The samples need no readiness query method.
 
+To present the same scenario step by step with the sample worker, `temporal server start-dev` and the Temporal CLI, follow [DEMO.md](DEMO.md).
+
 ## Build the workflow packages
 
 Each greeting application applies the library's `io.temporal.worker-packages` Gradle plugin. Its `workerPackage` task produces a validated `.twp` and participates in `assemble` and `build`.
